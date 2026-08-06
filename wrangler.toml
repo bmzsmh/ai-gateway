@@ -4,13 +4,12 @@ compatibility_date = "2025-07-01"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
-# KV namespace — wrangler will auto-resolve by name
+# KV namespace
 [[kv_namespaces]]
 binding = "KV"
 id = "f8f174699b4b43b3ae29594484921b07"
 
-# Admin credentials (set these in Cloudflare Dashboard > Workers > Variables)
-# [vars]
-# ADMIN_USERNAME = "admin"
-# ADMIN_PASSWORD = "your-password"
-# OPENCODE_MIRRORS_URL = "https://opencode.ai.cmliussss.net/zen/v1\nhttps://opencode.fastly.cmliussss.net/zen/v1\nhttps://opencode.gcore.cmliussss.net/zen/v1"
+# Admin credentials and OpenCode mirrors (synced from Dashboard)
+[vars]
+ADMIN_USERNAME = "admin"
+OPENCODE_MIRRORS_URL = "https://opencode.ai.cmliussss.net/zen/v1\nhttps://opencode.fastly.cmliussss.net/zen/v1\nhttps://opencode.gcore.cmliussss.net/zen/v1"
