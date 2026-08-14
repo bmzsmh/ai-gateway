@@ -9,6 +9,10 @@ import {
   addProxyKey,
   updateProxyKey,
   deleteProxyKey,
+  getModelGroups,
+  getModelGroup,
+  saveModelGroup,
+  deleteModelGroup,
 } from './storage'
 import { testModelConnection } from './proxy'
 import { fetchOpenCodeModels, isOpenCodeProvider, resolveOpenCodeUrls, testOpenCodeModel } from './opencode'
@@ -21,6 +25,7 @@ import type {
   UpdateProviderRequest,
   CreateProxyKeyRequest,
   TestModelRequest,
+  ModelGroup,
 } from './types'
 
 // ===== 系统状态 =====
@@ -351,4 +356,50 @@ export async function handleUpdateProxyKey(c: Context<{ Bindings: Env }>) {
     return c.json<ApiResponse>({ success: false, message: '转发 Key 不存在' }, 404)
   }
   return c.json<ApiResponse>({ success: true, data: updated })
+}
+
+// ===== 模型组管理 =====
+
+export async function handleGetModelGroups(c: Context<{ Bindings: Env }>) {
+  const groups = await getModelGroups(c.env)
+  return c.json<ApiResponse>({ success: true, data: groups })
+}
+
+export async function handleCreateModelGroup(c: Context<{ Bindings: Env }>) {
+  const body = await c.req.json<Partial<ModelGroup>>()
+  if (!body.id || !Array.isArray(body.members) || body.members.length === 0) {
+    return c.json<ApiResponse>({ success: false, message: 'id 和 members（至少一个）为必填' }, 400)
+  }
+  const group: ModelGroup = {
+    id: body.id,
+    name: body.name || body.id,
+    enabled: true,
+    members: body.members,
+  }
+  await saveModelGroup(c.env, group)
+  return c.json<ApiResponse>({ success: true, data: group, message: '模型组已创建' }, 201)
+}
+
+export async function handleUpdateModelGroup(c: Context<{ Bindings: Env }>) {
+  const groupId = c.req.param('id')
+  if (!groupId) return c.json<ApiResponse>({ success: false, message: '缺少 id 参数' }, 400)
+  const existing = await getModelGroup(c.env, groupId)
+  if (!existing) {
+    return c.json<ApiResponse>({ success: false, message: '模型组不存在' }, 404)
+  }
+  const body = await c.req.json<Partial<ModelGroup>>()
+  const updated: ModelGroup = { ...existing, ...body, id: existing.id }
+  await saveModelGroup(c.env, updated)
+  return c.json<ApiResponse>({ success: true, data: updated, message: '模型组已更新' })
+}
+
+export async function handleDeleteModelGroup(c: Context<{ Bindings: Env }>) {
+  const groupId = c.req.param('id')
+  if (!groupId) return c.json<ApiResponse>({ success: false, message: '缺少 id 参数' }, 400)
+  const existing = await getModelGroup(c.env, groupId)
+  if (!existing) {
+    return c.json<ApiResponse>({ success: false, message: '模型组不存在' }, 404)
+  }
+  await deleteModelGroup(c.env, groupId)
+  return c.json<ApiResponse>({ success: true, message: '模型组已删除' })
 }

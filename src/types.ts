@@ -29,6 +29,13 @@ export interface ProxyKey {
   expiresAt?: string | null
 }
 
+export interface ModelGroup {
+  id: string
+  name: string
+  enabled: boolean
+  members: string[]
+}
+
 export interface Session {
   username: string
   expiresAt: number

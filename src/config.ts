@@ -29,7 +29,11 @@ export const KV_KEYS = {
   SESSION_PREFIX: 'admin:session:',
   KEY_HEALTH_PREFIX: 'key:health:',
   OPENCODE_MIGRATION: 'migration:opencode-default:v1',
+  MODEL_GROUP_LIST: 'model_group_list',
 } as const
+
+/** 模型组 KV key 前缀 */
+export const MODEL_GROUP_KEY = (groupId: string) => `model_group:${groupId}`
 
 // 有效期选项（秒）
 export const EXPIRY_OPTIONS: Record<string, number | null> = {

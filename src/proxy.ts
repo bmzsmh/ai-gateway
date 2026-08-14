@@ -1,5 +1,5 @@
 import { Context } from 'hono'
-import { getProvider, getProviders } from './storage'
+import { getProvider, getProviders, getModelGroup } from './storage'
 import { KV_KEYS, KEY_HEALTH_COOLDOWN_MS, KEY_HEALTH_MAX_FAILURES } from './config'
 import type { Env, ProxyRequestBody } from './types'
 import { isOpenCodeProvider, proxyOpenCodeRequest, resolveOpenCodeUrls } from './opencode'
@@ -124,6 +124,81 @@ export async function handleProxy(c: Context<{ Bindings: Env }>) {
     }
 
     const { providerId, modelId } = parsed
+
+    // ===== 模型组路由（分层梯队：主力优先，备用兜底） =====
+    if (providerId === 'group') {
+      const group = await getModelGroup(c.env, modelId)
+      if (!group) {
+        return c.json({ error: { message: `模型组 "${modelId}" 不存在`, type: 'invalid_request_error' } }, 404)
+      }
+      if (!group.enabled) {
+        return c.json({ error: { message: `模型组 "${modelId}" 已禁用`, type: 'group_disabled' } }, 403)
+      }
+      if (group.members.length === 0) {
+        return c.json({ error: { message: `模型组 "${modelId}" 未配置成员模型`, type: 'configuration_error' } }, 500)
+      }
+
+      // 分层：普通成员 = 第一梯队（优先），group/ 前缀 = 第二梯队（备用）
+      const primaryMembers = group.members.filter((m) => !m.startsWith('group/'))
+      const backupGroups = group.members.filter((m) => m.startsWith('group/'))
+      let lastErr: Response | null = null
+
+      // 第一梯队：随机起点轮换
+      if (primaryMembers.length > 0) {
+        const startIdx = Math.floor(Math.random() * primaryMembers.length)
+        for (let k = 0; k < primaryMembers.length; k++) {
+          const member = primaryMembers[(startIdx + k) % primaryMembers.length]
+          const memberParsed = parseModelId(member)
+          if (!memberParsed) continue
+          const resp = await forwardToProviderModel(c, memberParsed.providerId, memberParsed.modelId, body)
+          if (resp.status < 400) return resp
+          console.log(`[proxy][group:${modelId}] 第一梯队成员 ${member} 失败 (HTTP ${resp.status})，尝试下一个`)
+          lastErr = resp
+        }
+      }
+
+      // 第二梯队：备用子组逐个尝试（子组内部同样分层轮换）
+      for (const subRef of backupGroups) {
+        const subParsed = parseModelId(subRef)
+        if (!subParsed || subParsed.providerId !== 'group') continue
+        const subGroup = await getModelGroup(c.env, subParsed.modelId)
+        if (!subGroup || !subGroup.enabled || subGroup.members.length === 0) {
+          console.log(`[proxy][group:${modelId}] 备用组 ${subRef} 不可用`)
+          continue
+        }
+        const subPrimary = subGroup.members.filter((m) => !m.startsWith('group/'))
+        const subStart = Math.floor(Math.random() * subPrimary.length)
+        for (let k = 0; k < subPrimary.length; k++) {
+          const member = subPrimary[(subStart + k) % subPrimary.length]
+          const memberParsed = parseModelId(member)
+          if (!memberParsed) continue
+          const resp = await forwardToProviderModel(c, memberParsed.providerId, memberParsed.modelId, body)
+          if (resp.status < 400) return resp
+          console.log(`[proxy][group:${modelId}] 第二梯队成员 ${member} 失败 (HTTP ${resp.status})，尝试下一个`)
+          lastErr = resp
+        }
+      }
+
+      if (lastErr) {
+        const detail = await lastErr.text().catch(() => '')
+        return c.json({
+          error: { message: `模型组 "${modelId}" 内所有模型均失败`, type: 'group_exhausted', detail: detail.substring(0, 500) },
+        }, (lastErr.status || 502) as Parameters<typeof c.json>[1])
+      }
+      return c.json({ error: { message: '模型组内没有可用模型', type: 'configuration_error' } }, 500)
+    }
+    return await forwardToProviderModel(c, providerId, modelId, body)
+
+  } catch (err) {
+    const error = err as Error
+    return c.json({
+      error: { message: error.message || '代理转发内部错误', type: 'server_error' },
+    }, 500)
+  }
+}
+
+async function forwardToProviderModel(c: Context<{ Bindings: Env }>, providerId: string, modelId: string, body: ProxyRequestBody): Promise<Response> {
+  try {
     const provider = await getProvider(c.env, providerId)
 
     if (!provider) {

@@ -1,5 +1,6 @@
 import { KV_KEYS } from './config'
-import type { Env, Provider, ProxyKey, Session } from './types'
+import { MODEL_GROUP_KEY } from './config'
+import type { Env, ModelGroup, Provider, ProxyKey, Session } from './types'
 
 // ===== 提供商 CRUD =====
 
@@ -153,4 +154,37 @@ export async function seedInitialData(env: Env): Promise<void> {
       await addProxyKey(env, testKey)
     }
   }
+}
+
+// ===== 模型组 CRUD =====
+
+export async function getModelGroup(env: Env, groupId: string): Promise<ModelGroup | null> {
+  const raw = await env.KV.get(MODEL_GROUP_KEY(groupId))
+  return raw ? JSON.parse(raw) : null
+}
+
+export async function getModelGroupIds(env: Env): Promise<string[]> {
+  const raw = await env.KV.get(KV_KEYS.MODEL_GROUP_LIST)
+  return raw ? JSON.parse(raw) : []
+}
+
+export async function saveModelGroup(env: Env, group: ModelGroup): Promise<void> {
+  await env.KV.put(MODEL_GROUP_KEY(group.id), JSON.stringify(group))
+  const ids = await getModelGroupIds(env)
+  if (!ids.includes(group.id)) {
+    ids.push(group.id)
+    await env.KV.put(KV_KEYS.MODEL_GROUP_LIST, JSON.stringify(ids))
+  }
+}
+
+export async function deleteModelGroup(env: Env, groupId: string): Promise<void> {
+  await env.KV.delete(MODEL_GROUP_KEY(groupId))
+  const ids = await getModelGroupIds(env)
+  await env.KV.put(KV_KEYS.MODEL_GROUP_LIST, JSON.stringify(ids.filter((id) => id !== groupId)))
+}
+
+export async function getModelGroups(env: Env): Promise<ModelGroup[]> {
+  const ids = await getModelGroupIds(env)
+  const groups = await Promise.all(ids.map((id) => getModelGroup(env, id)))
+  return groups.filter((g): g is ModelGroup => g !== null)
 }

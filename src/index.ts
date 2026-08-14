@@ -17,6 +17,10 @@ import {
   handleCreateProxyKey,
   handleUpdateProxyKey,
   handleDeleteProxyKey,
+  handleGetModelGroups,
+  handleCreateModelGroup,
+  handleUpdateModelGroup,
+  handleDeleteModelGroup,
 } from './admin'
 import { renderHomePage, renderLoginPage, renderAdminPage } from './pages'
 import { seedInitialData, getSession } from './storage'
@@ -76,6 +80,12 @@ app.get('/admin/api/proxy-keys', handleGetProxyKeys)
 app.post('/admin/api/proxy-keys', handleCreateProxyKey)
 app.delete('/admin/api/proxy-keys/:id', handleDeleteProxyKey)
 app.patch('/admin/api/proxy-keys/:id', handleUpdateProxyKey)
+
+// 模型组管理
+app.get('/admin/api/model-groups', handleGetModelGroups)
+app.post('/admin/api/model-groups', handleCreateModelGroup)
+app.put('/admin/api/model-groups/:id', handleUpdateModelGroup)
+app.delete('/admin/api/model-groups/:id', handleDeleteModelGroup)
 
 // ===== API 转发路由（需转发 Key 验证） =====
 app.use('/v1/*', proxyKeyAuthMiddleware)
