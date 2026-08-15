@@ -1,6 +1,6 @@
 import { KV_KEYS } from './config'
 import { MODEL_GROUP_KEY } from './config'
-import type { Env, ModelGroup, Provider, ProxyKey, Session } from './types'
+import type { Env, ModelGroup, Provider, ProxyKey, Session, ProviderStatus } from './types'
 
 // ===== 提供商 CRUD =====
 
@@ -39,6 +39,103 @@ export async function deleteProvider(env: Env, id: string): Promise<boolean> {
   if (filtered.length === providers.length) return false
   await setProviders(env, filtered)
   return true
+}
+
+
+// ===== Provider 状态管理 =====
+
+export async function setProviderStatus(
+  env: Env,
+  id: string,
+  status: ProviderStatus,
+  reason?: string
+): Promise<Provider | null> {
+  const provider = await getProvider(env, id)
+  if (!provider) return null
+
+  const history = provider.statusHistory || []
+  history.push({
+    status,
+    reason: reason || (status === 'active' ? '验证通过' : status === 'pending' ? '待验证' : '已禁用'),
+    timestamp: new Date().toISOString(),
+  })
+
+  const updates: Partial<Provider> = {
+    status,
+    statusReason: reason,
+    statusHistory: history,
+  }
+  if (status === 'active') {
+    updates.updatedAt = new Date().toISOString()
+  }
+
+  return updateProvider(env, id, updates)
+}
+
+export async function getActiveProviders(env: Env): Promise<Provider[]> {
+  const providers = await getProviders(env)
+  return providers.filter((p) => p.enabled && p.status !== 'pending' && p.status !== 'disabled')
+}
+
+export async function testProviderStatus(
+  env: Env,
+  id: string,
+  testEndpoint: 'models' | 'chat' = 'models'
+): Promise<{ success: boolean; reason: string }> {
+  const provider = await getProvider(env, id)
+  if (!provider) {
+    return { success: false, reason: 'Provider not found' }
+  }
+
+  // 检查是否有可用的 key
+  const enabledKeys = provider.apiKeys.filter(k => k.enabled)
+  if (enabledKeys.length === 0) {
+    return { success: false, reason: 'No enabled API keys' }
+  }
+
+  try {
+    const cleanBase = provider.baseUrl.replace(/\/$/, '')
+    let response: Response
+
+    if (testEndpoint === 'models') {
+      // 测试 GET /models
+      response = await fetch(`${cleanBase}/v1/models`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${enabledKeys[0].key}`,
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+    } else {
+      // 测试 POST /v1/chat/completions（最小请求）
+      const endpoint = provider.apiType === 'anthropic' ? 'messages' : 'chat/completions'
+      response = await fetch(`${cleanBase}/v1/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(provider.apiType === 'anthropic'
+            ? { 'x-api-key': enabledKeys[0].key, 'anthropic-version': '2023-06-01' }
+            : { 'Authorization': `Bearer ${enabledKeys[0].key}` }
+          ),
+        },
+        body: JSON.stringify({
+          model: provider.models[0]?.id || 'test',
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(10000),
+      })
+    }
+
+    if (response.ok) {
+      return { success: true, reason: '' }
+    } else {
+      const errorText = await response.text().catch(() => '')
+      return { success: false, reason: `HTTP ${response.status}: ${errorText.slice(0, 200)}` }
+    }
+  } catch (err) {
+    return { success: false, reason: `Error: ${err instanceof Error ? err.message : String(err)}` }
+  }
 }
 
 // ===== Session 管理 =====

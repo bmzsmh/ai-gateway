@@ -8,6 +8,9 @@ export interface ApiKeyEntry {
   enabled: boolean
 }
 
+// Provider 状态：pending（待验证）/ active（可用）/ disabled（禁用）
+export type ProviderStatus = 'pending' | 'active' | 'disabled'
+
 export interface Provider {
   id: string
   name: string
@@ -16,6 +19,13 @@ export interface Provider {
   apiKeys: ApiKeyEntry[]
   models: Model[]
   enabled: boolean
+  status: ProviderStatus  // 新增：provider 验证状态
+  statusReason?: string   // 新增：失败原因（pending 状态时记录）
+  statusHistory?: {      // 新增：状态变更历史
+    status: ProviderStatus
+    reason: string
+    timestamp: string
+  }[]
   createdAt: string
   updatedAt: string
 }
@@ -59,6 +69,7 @@ export interface CreateProviderRequest {
   apiKeys?: Array<{ key: string; enabled: boolean }>
   models?: Array<{ id: string; enabled: boolean }> | string[]
   enabled?: boolean
+  status?: ProviderStatus
 }
 
 export interface UpdateProviderRequest {
@@ -68,6 +79,8 @@ export interface UpdateProviderRequest {
   apiKeys?: Array<{ key: string; enabled: boolean }>
   models?: Array<{ id: string; enabled: boolean }> | string[]
   enabled?: boolean
+  status?: ProviderStatus
+  statusReason?: string
 }
 
 export interface CreateProxyKeyRequest {

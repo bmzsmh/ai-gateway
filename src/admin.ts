@@ -13,6 +13,8 @@ import {
   getModelGroup,
   saveModelGroup,
   deleteModelGroup,
+  testProviderStatus,
+  setProviderStatus,
 } from './storage'
 import { testModelConnection } from './proxy'
 import { fetchOpenCodeModels, isOpenCodeProvider, resolveOpenCodeUrls, testOpenCodeModel } from './opencode'
@@ -103,6 +105,7 @@ apiKeys: normalizeArray(body.apiKeys, (k) => ({ key: k, enabled: true })),
       ? normalizeArray(body.models, (m) => ({ id: m, enabled: true }))
       : [],
     enabled: body.enabled !== undefined ? body.enabled : true,
+    status: body.status || 'pending',
     createdAt: now,
     updatedAt: now,
   }
@@ -124,6 +127,8 @@ if (body.apiKeys !== undefined) {
     updates.apiKeys = normalizeArray(body.apiKeys, (k) => ({ key: k, enabled: true }))
   }
   if (body.enabled !== undefined) updates.enabled = body.enabled
+  if (body.status !== undefined) updates.status = body.status
+  if (body.statusReason !== undefined) updates.statusReason = body.statusReason
   if (body.models !== undefined) {
     updates.models = normalizeArray(body.models, (m) => ({ id: m, enabled: true }))
   }
@@ -402,4 +407,55 @@ export async function handleDeleteModelGroup(c: Context<{ Bindings: Env }>) {
   }
   await deleteModelGroup(c.env, groupId)
   return c.json<ApiResponse>({ success: true, message: '模型组已删除' })
+}
+
+// ===== Provider 状态管理端点 =====
+
+export async function handleTestProviderStatus(c: Context<{ Bindings: Env }>) {
+  const id = c.req.param('id')
+  if (!id) {
+    return c.json({ error: { message: '缺少 provider id' } }, 400)
+  }
+
+  const result = await testProviderStatus(c.env, id)
+
+  if (result.success) {
+    await setProviderStatus(c.env, id, 'active', '验证通过')
+    return c.json({
+      success: true,
+      data: { status: 'active', reason: '' },
+      message: 'Provider 验证通过，状态已更新为 active',
+    })
+  } else {
+    await setProviderStatus(c.env, id, 'pending', result.reason)
+    return c.json({
+      success: false,
+      data: { status: 'pending', reason: result.reason },
+      message: 'Provider 验证失败，保持 pending 状态',
+    }, 400)
+  }
+}
+
+export async function handleSetProviderStatus(c: Context<{ Bindings: Env }>) {
+  const id = c.req.param('id')
+  const { status, reason } = await c.req.json()
+
+  if (!id || !status) {
+    return c.json({ error: { message: '缺少必要参数' } }, 400)
+  }
+
+  if (!['pending', 'active', 'disabled'].includes(status)) {
+    return c.json({ error: { message: '无效的状态值' } }, 400)
+  }
+
+  const provider = await setProviderStatus(c.env, id, status, reason)
+  if (!provider) {
+    return c.json({ error: { message: 'Provider not found' } }, 404)
+  }
+
+  return c.json({
+    success: true,
+    data: provider,
+    message: `Provider 状态已更新为 ${status}`,
+  })
 }

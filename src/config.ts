@@ -58,6 +58,7 @@ export const DEFAULT_PROVIDERS: Provider[] = [
       { id: 'hy3-free', enabled: true },
     ],
     enabled: true,
+    status: 'active',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },

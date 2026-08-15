@@ -1,7 +1,7 @@
 import { Context } from 'hono'
-import { getProvider, getProviders, getModelGroup } from './storage'
+import { getProvider, getProviders, getModelGroup, getActiveProviders } from './storage'
 import { KV_KEYS, KEY_HEALTH_COOLDOWN_MS, KEY_HEALTH_MAX_FAILURES } from './config'
-import type { Env, ProxyRequestBody } from './types'
+import type { Env, ProviderStatus, ProxyRequestBody } from './types'
 import { isOpenCodeProvider, proxyOpenCodeRequest, resolveOpenCodeUrls } from './opencode'
 
 // ===== Key 健康状态类型和辅助函数 =====
@@ -138,6 +138,10 @@ export async function handleProxy(c: Context<{ Bindings: Env }>) {
         return c.json({ error: { message: `模型组 "${modelId}" 未配置成员模型`, type: 'configuration_error' } }, 500)
       }
 
+      // 过滤出 active 状态的 provider
+      const activeProviders = await getActiveProviders(c.env)
+      const activeProviderIds = new Set(activeProviders.map(p => p.id))
+
       // 分层：普通成员 = 第一梯队（优先），group/ 前缀 = 第二梯队（备用）
       const primaryMembers = group.members.filter((m) => !m.startsWith('group/'))
       const backupGroups = group.members.filter((m) => m.startsWith('group/'))
@@ -150,6 +154,12 @@ export async function handleProxy(c: Context<{ Bindings: Env }>) {
           const member = primaryMembers[(startIdx + k) % primaryMembers.length]
           const memberParsed = parseModelId(member)
           if (!memberParsed) continue
+          // 检查 provider 状态
+          const provider = await getProvider(c.env, memberParsed.providerId)
+          if (!provider || provider.status !== 'active') {
+            console.log(`[proxy][group:${modelId}] 跳过非 active provider: ${memberParsed.providerId} (status: ${provider?.status})`)
+            continue
+          }
           const resp = await forwardToProviderModel(c, memberParsed.providerId, memberParsed.modelId, body)
           if (resp.status < 400) return resp
           console.log(`[proxy][group:${modelId}] 第一梯队成员 ${member} 失败 (HTTP ${resp.status})，尝试下一个`)
@@ -172,6 +182,11 @@ export async function handleProxy(c: Context<{ Bindings: Env }>) {
           const member = subPrimary[(subStart + k) % subPrimary.length]
           const memberParsed = parseModelId(member)
           if (!memberParsed) continue
+          // 检查 provider 状态
+          const provider = await getProvider(c.env, memberParsed.providerId)
+          if (!provider || provider.status !== 'active') {
+            continue
+          }
           const resp = await forwardToProviderModel(c, memberParsed.providerId, memberParsed.modelId, body)
           if (resp.status < 400) return resp
           console.log(`[proxy][group:${modelId}] 第二梯队成员 ${member} 失败 (HTTP ${resp.status})，尝试下一个`)
@@ -187,6 +202,22 @@ export async function handleProxy(c: Context<{ Bindings: Env }>) {
       }
       return c.json({ error: { message: '模型组内没有可用模型', type: 'configuration_error' } }, 500)
     }
+    // 直连 provider 路由：检查状态
+    const directProvider = await getProvider(c.env, providerId)
+    if (directProvider && directProvider.status === 'pending') {
+      return c.json({
+        error: {
+          message: `提供商 "${directProvider.name}" 尚未完成验证（状态: pending）`,
+          type: 'provider_pending',
+        },
+      }, 403)
+    }
+    if (directProvider && directProvider.status === 'disabled') {
+      return c.json({
+        error: { message: `提供商 "${directProvider.name}" 已禁用`, type: 'provider_disabled' },
+      }, 403)
+    }
+
     return await forwardToProviderModel(c, providerId, modelId, body)
 
   } catch (err) {
@@ -205,6 +236,16 @@ async function forwardToProviderModel(c: Context<{ Bindings: Env }>, providerId:
       return c.json({
         error: { message: `提供商 "${providerId}" 不存在`, type: 'invalid_request_error' },
       }, 404)
+    }
+
+    // 检查 provider 状态（新增）
+    if (provider.status !== 'active') {
+      return c.json({
+        error: {
+          message: `提供商 "${provider.name}" 状态为 ${provider.status}`,
+          type: 'provider_inactive',
+        },
+      }, 403)
     }
 
     if (!provider.enabled) {
@@ -413,9 +454,9 @@ async function forwardToProviderModel(c: Context<{ Bindings: Env }>, providerId:
   }
 }
 
-/** 处理 /v1/models — 返回所有已启用的模型（含提供商前缀） */
+/** 处理 /v1/models — 返回所有已启用的模型（含提供商前缀），仅 active provider */
 export async function handleModels(c: Context<{ Bindings: Env }>) {
-  const providers = await getProviders(c.env)
+  const providers = await getActiveProviders(c.env)  // 只返回 active 状态的 provider
 
   const models: Array<{
     id: string
@@ -427,7 +468,6 @@ export async function handleModels(c: Context<{ Bindings: Env }>) {
   }> = []
 
   for (const provider of providers) {
-    if (!provider.enabled) continue
     for (const model of provider.models) {
       if (!model.enabled) continue
       models.push({

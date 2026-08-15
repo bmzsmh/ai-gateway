@@ -21,6 +21,8 @@ import {
   handleCreateModelGroup,
   handleUpdateModelGroup,
   handleDeleteModelGroup,
+  handleTestProviderStatus,
+  handleSetProviderStatus,
 } from './admin'
 import { renderHomePage, renderLoginPage, renderAdminPage } from './pages'
 import { seedInitialData, getSession } from './storage'
@@ -68,6 +70,8 @@ app.get('/admin/api/status', handleStatus)
 
 // 提供商 CRUD
 app.get('/admin/api/providers', handleGetProviders)
+app.post('/admin/api/providers/:id/test-status', handleTestProviderStatus)
+app.patch('/admin/api/providers/:id/status', handleSetProviderStatus)
 app.post('/admin/api/providers', handleCreateProvider)
 app.put('/admin/api/providers/:id', handleUpdateProvider)
 app.delete('/admin/api/providers/:id', handleDeleteProvider)
