@@ -111,6 +111,41 @@ apiKeys: normalizeArray(body.apiKeys, (k) => ({ key: k, enabled: true })),
   }
 
   await addProvider(c.env, provider)
+
+  // 处理梯队分配
+  if (body.groupId) {
+    const group = await getModelGroup(c.env, body.groupId)
+    if (group) {
+      // 统一获取第一个模型 ID（兼容 string[] 和对象数组两种格式）
+      const modelArray = body.models
+        ? normalizeArray(body.models, (m) => (typeof m === 'string' ? m : m.id))
+        : []
+      const firstModel = modelArray[0]
+      const firstModelId = typeof firstModel === 'string' ? firstModel : (firstModel && (firstModel as { id?: string }).id)
+      const memberId = firstModelId ? `${body.id}/${firstModelId}` : null
+      if (memberId) {
+        if (body.tier === 'primary') {
+          // 一梯队：直接加入指定 group 的 members
+          if (!group.members.includes(memberId)) {
+            group.members.push(memberId)
+            await saveModelGroup(c.env, group)
+          }
+        } else if (body.tier === 'backup') {
+          // 二梯队：加入对应 backup group 的 members
+          // 自动推断 backup group ID：auto-task ↔ auto-task-backup
+          const backupGroupId = body.groupId === 'auto-task' ? 'auto-task-backup' : 'auto-task'
+          const backupGroup = await getModelGroup(c.env, backupGroupId)
+          if (backupGroup) {
+            if (!backupGroup.members.includes(memberId)) {
+              backupGroup.members.push(memberId)
+              await saveModelGroup(c.env, backupGroup)
+            }
+          }
+        }
+      }
+    }
+  }
+
   return c.json<ApiResponse<Provider>>({ success: true, data: provider }, 201)
 }
 
@@ -144,6 +179,24 @@ if (body.apiKeys !== undefined) {
 export async function handleDeleteProvider(c: Context<{ Bindings: Env }>) {
   const id = c.req.param('id')
   if (!id) return c.json<ApiResponse>({ success: false, message: '缺少 id 参数' }, 400)
+
+  // 先从所有 group 中清理引用，再删除 provider
+  const groups = await getModelGroups(c.env)
+  for (const group of groups) {
+    const newMembers = group.members.filter((m) => {
+      // 解析 member 引用，检查是否属于此 provider
+      const memberToCheck = m.startsWith('group/') ? m.substring(6) : m
+      const slashIdx = memberToCheck.indexOf('/')
+      if (slashIdx === -1) return true
+      const providerId = memberToCheck.substring(0, slashIdx)
+      return providerId !== id
+    })
+    if (newMembers.length !== group.members.length) {
+      group.members = newMembers
+      await saveModelGroup(c.env, group)
+    }
+  }
+
   const deleted = await deleteProvider(c.env, id)
   if (!deleted) {
     return c.json<ApiResponse>({ success: false, message: '提供商不存在' }, 404)

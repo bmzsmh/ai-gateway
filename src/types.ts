@@ -70,6 +70,9 @@ export interface CreateProviderRequest {
   models?: Array<{ id: string; enabled: boolean }> | string[]
   enabled?: boolean
   status?: ProviderStatus
+  // 梯队选择
+  groupId?: string  // 加入的目标 model group ID
+  tier?: 'primary' | 'backup'  // 梯队级别
 }
 
 export interface UpdateProviderRequest {
