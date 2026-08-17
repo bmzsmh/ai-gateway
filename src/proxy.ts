@@ -1,5 +1,5 @@
 import { Context } from 'hono'
-import { getProvider, getProviders, getModelGroup, getActiveProviders } from './storage'
+import { getProvider, getProviders, getModelGroup, getModelGroups, getActiveProviders } from './storage'
 import { KV_KEYS, KEY_HEALTH_COOLDOWN_MS, KEY_HEALTH_MAX_FAILURES } from './config'
 import type { Env, ProviderStatus, ProxyRequestBody } from './types'
 import { isOpenCodeProvider, proxyOpenCodeRequest, resolveOpenCodeUrls } from './opencode'
@@ -457,6 +457,7 @@ async function forwardToProviderModel(c: Context<{ Bindings: Env }>, providerId:
 /** 处理 /v1/models — 返回所有已启用的模型（含提供商前缀），仅 active provider */
 export async function handleModels(c: Context<{ Bindings: Env }>) {
   const providers = await getActiveProviders(c.env)  // 只返回 active 状态的 provider
+  const groups = await getModelGroups(c.env)  // 获取所有 group
 
   const models: Array<{
     id: string
@@ -467,6 +468,25 @@ export async function handleModels(c: Context<{ Bindings: Env }>) {
     owned_by: string
   }> = []
 
+  // 先添加 group 模型（主力梯队在前，备用梯队在后）
+  const groupOrder = ['auto-task', 'auto-task-backup']
+  for (const groupId of groupOrder) {
+    const group = groups.find(g => g.id === groupId)
+    if (!group || !group.enabled) continue
+    
+    const tierLabel = groupId === 'auto-task' ? '主力梯队' : '备用梯队'
+    const memberCount = group.members.length
+    models.push({
+      id: `group/${groupId}`,
+      provider: 'group',
+      provider_name: `${group.name} (${tierLabel}) [${memberCount}个模型]`,
+      object: 'model',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'group',
+    })
+  }
+
+  // 再添加直连 provider 模型
   for (const provider of providers) {
     for (const model of provider.models) {
       if (!model.enabled) continue
