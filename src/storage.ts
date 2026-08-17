@@ -94,11 +94,13 @@ export async function testProviderStatus(
   }
 
   try {
-    const cleanBase = provider.baseUrl.replace(/\/$/, '')
+    // baseUrl 可能已含 /v1（如 https://api.hcnsec.cn/v1），也可能不含（如 https://api.openai.com）
+    // 统一处理：去掉尾部 /，去掉开头的 /v1（如果存在），再拼路径
+    const cleanBase = provider.baseUrl.replace(/\/$/, '').replace(/\/v1$/, '')
     let response: Response
 
     if (testEndpoint === 'models') {
-      // 测试 GET /models
+      // 测试 GET /v1/models
       response = await fetch(`${cleanBase}/v1/models`, {
         method: 'GET',
         headers: {
