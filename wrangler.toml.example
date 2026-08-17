@@ -1,0 +1,18 @@
+name = "ai-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-07-01"
+compatibility_flags = ["nodejs_compat"]
+keep_vars = true
+
+# KV namespace - 生产环境
+# 请替换 <YOUR_PROD_KV_NAMESPACE_ID> 为你的实际生产 KV namespace ID
+# 也可以通过 GitHub Actions vars.KV_NAMESPACE_ID 注入（见 .github/workflows/deploy.yml）
+[[kv_namespaces]]
+binding = "KV"
+id = "<YOUR_PROD_KV_NAMESPACE_ID>"
+
+# Admin credentials（生产环境）
+# ADMIN_PASSWORD 不在此文件保存，由 GitHub Actions vars.ADMIN_PASSWORD 注入
+[vars]
+ADMIN_USERNAME = "<YOUR_ADMIN_USERNAME>"
+OPENCODE_MIRRORS_URL = "https://opencode.ai.cmliussss.net/zen/v1\nhttps://opencode.fastly.cmliussss.net/zen/v1\nhttps://opencode.gcore.cmliussss.net/zen/v1"

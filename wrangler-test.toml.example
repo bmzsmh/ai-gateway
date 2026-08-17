@@ -5,12 +5,14 @@ compatibility_flags = ["nodejs_compat"]
 keep_vars = true
 
 # KV namespace - 测试环境独立
+# 请替换 <YOUR_TEST_KV_NAMESPACE_ID> 为你的实际测试 KV namespace ID
 [[kv_namespaces]]
 binding = "KV"
-id = "20983d6edf064ac08e3f7054ed548979"
+id = "<YOUR_TEST_KV_NAMESPACE_ID>"
 
-# Admin credentials
+# Admin credentials（测试环境）
+# 请替换 <YOUR_ADMIN_USERNAME> 和 <YOUR_ADMIN_PASSWORD>，不要提交真实密码
 [vars]
-ADMIN_USERNAME = "test"
-ADMIN_PASSWORD = "test123"
+ADMIN_USERNAME = "<YOUR_ADMIN_USERNAME>"
+ADMIN_PASSWORD = "<YOUR_ADMIN_PASSWORD>"
 OPENCODE_MIRRORS_URL = "https://opencode.ai.cmliussss.net/zen/v1\nhttps://opencode.fastly.cmliussss.net/zen/v1\nhttps://opencode.gcore.cmliussss.net/zen/v1"

@@ -48,7 +48,7 @@ jobs:
 
           [[kv_namespaces]]
           binding = "KV"
-          id = "f8f174699b4b43b3ae29594484921b07"
+          id = "${{ vars.KV_NAMESPACE_ID }}"
 
           [vars]
           ADMIN_USERNAME = ${{ vars.ADMIN_USERNAME }}
