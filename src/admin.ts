@@ -132,8 +132,12 @@ apiKeys: normalizeArray(body.apiKeys, (k) => ({ key: k, enabled: true })),
           }
         } else if (body.tier === 'backup') {
           // 二梯队：加入对应 backup group 的 members
-          // 自动推断 backup group ID：auto-task ↔ auto-task-backup
-          const backupGroupId = body.groupId === 'auto-task' ? 'auto-task-backup' : 'auto-task'
+          // 自动推断 backup group ID：auto-task ↔ auto-task-backup（双向映射）
+          const backupGroupId = body.groupId === 'auto-task' ? 'auto-task-backup' : (body.groupId === 'auto-task-backup' ? 'auto-task' : null)
+          if (!backupGroupId) {
+            // groupId 不是标准 group，跳过 backup 写入
+            return c.json<ApiResponse>({ success: false, message: `不支持的 groupId "${body.groupId}" 与 tier=backup 组合` }, 400)
+          }
           const backupGroup = await getModelGroup(c.env, backupGroupId)
           if (backupGroup) {
             if (!backupGroup.members.includes(memberId)) {
