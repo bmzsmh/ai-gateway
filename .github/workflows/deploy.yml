@@ -37,8 +37,10 @@ jobs:
           MIRRORS_URL=$(printf '%s\\n' "${DEFAULT_URLS[@]}" | sed '$s/\\n$//')
           EXTRA_URLS="${{ vars.OPENCODE_MIRRORS_URL }}"
           if [ -n "$EXTRA_URLS" ]; then
-            MIRRORS_URL="${MIRRORS_URL}\n${EXTRA_URLS}"
+            MIRRORS_URL="${MIRRORS_URL}\\n${EXTRA_URLS}"
           fi
+          ADMIN_USERNAME_VAR="${{ vars.ADMIN_USERNAME }}"
+          ADMIN_PASSWORD_VAR="${{ vars.ADMIN_PASSWORD }}"
           cat > wrangler.toml << EOF
           name = "ai-gateway"
           main = "src/index.ts"
@@ -51,10 +53,18 @@ jobs:
           id = "${{ vars.KV_NAMESPACE_ID }}"
 
           [vars]
-          ADMIN_USERNAME = ${{ vars.ADMIN_USERNAME }}
-          ADMIN_PASSWORD = ${{ vars.ADMIN_PASSWORD }}
           OPENCODE_MIRRORS_URL = "${MIRRORS_URL}"
           EOF
+          # 仅在配置了 admin 凭据变量时追加（避免空值破坏 TOML）
+          if [ -n "$ADMIN_USERNAME_VAR" ] && [ -n "$ADMIN_PASSWORD_VAR" ]; then
+            cat >> wrangler.toml << EOF
+          ADMIN_USERNAME = "${ADMIN_USERNAME_VAR}"
+          ADMIN_PASSWORD = "${ADMIN_PASSWORD_VAR}"
+          EOF
+            echo "admin vars 已写入 (条件配置)"
+          else
+            echo "admin vars 未配置，跳过（运行时凭据由 wrangler secret put 独立管理）"
+          fi
 
       - name: Build (dry-run)
         run: npm run build
