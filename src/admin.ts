@@ -207,11 +207,14 @@ if (body.apiKeys !== undefined) {
       }
     }
 
-    // 1. 从所有 group 移除该 provider 的所有引用
+    // 1. 从所有 group 移除此 provider 的所有引用（按前缀匹配，确保已删除模型也被清理）
+    const prefix = id + '/'
     for (const group of groups) {
-      if (!group.members.some((m) => memberIds.includes(m))) continue
-      group.members = group.members.filter((m) => !memberIds.includes(m))
-      await saveModelGroup(c.env, group)
+      const before = group.members.length
+      group.members = group.members.filter((m) => !m.startsWith(prefix))
+      if (group.members.length !== before) {
+        await saveModelGroup(c.env, group)
+      }
     }
 
     // 2. 加入目标 group（tier=primary → 目标 group；tier=backup → auto-task-backup 映射）

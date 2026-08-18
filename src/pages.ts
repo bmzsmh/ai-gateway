@@ -738,7 +738,7 @@ function addMdl(id) {
   d.dataset.idx = cnt
   d.innerHTML = '<input type="text" value="' + escapeHtml(mid) + '" class="fx1" id="mid-' + escapeHtml(id) + '-' + cnt + '" placeholder="模型 ID"><label class="tg"><input type="checkbox" checked id="men-' + escapeHtml(id) + '-' + cnt + '"><span class="sl"></span></label><button class="icon-btn" onclick="copyRowVal(this)" title="复制模型 ID" aria-label="复制模型 ID"><i class="far fa-copy"></i></button><button class="icon-btn" id="tm-' + escapeHtml(id) + '-' + cnt + '" title="测试模型" aria-label="测试模型"><i class="fas fa-plug"></i></button><button class="icon-btn" id="rm-' + escapeHtml(id) + '-' + cnt + '" title="移除模型" aria-label="移除模型"><i class="fas fa-times"></i></button>'
   c.appendChild(d)
-  document.getElementById('tm-' + id + '-' + cnt).addEventListener('click', function() { testMdl(id, mid, cnt) })
+  document.getElementById('tm-' + id + '-' + cnt).addEventListener('click', function() { testMdlNew(id, mid, cnt) })
   document.getElementById('rm-' + id + '-' + cnt).addEventListener('click', function() { rmMdl(id, cnt) })
   inp.value = ''
 }
@@ -762,6 +762,34 @@ async function testMdl(id, mid, idx) {
     const d = await r.json()
     if (d.success && d.data) {
       showResult(tr, d.data.success, d.data.success ? '' : (d.data.message || '连接失败'))
+    } else {
+      showResult(tr, false, d.message || '测试失败')
+    }
+  } catch (e) { showResult(tr, false, '请求失败') }
+}
+
+// 编辑页新增模型行的测试：直接向上游 API 验证模型（绕过 KV 预检查）
+// 新添加的模型尚未写入 KV，走 testMdl 会命中 handleTestModel 的
+// "模型不存在于提供商" 预检查。这里改用 /admin/api/test-model，
+// 用表单当前的 url/apiKey/apiType 直接向真实的 chat/completions 端点发请求。
+async function testMdlNew(id, mid, idx) {
+  if (!mid) { toast('请输入模型 ID', 'error'); return }
+  const url = document.getElementById('url-' + id).value.trim()
+  const keys = getKeys(id)
+  const apiKey = keys.length > 0 ? keys[0].key : ''
+  const apiType = document.getElementById('at-' + id).value
+  const tr = document.getElementById('tr-' + id)
+  showSpinner(tr)
+  try {
+    const r = await fetch('/admin/api/test-model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, apiKey, apiType, model: mid, providerId: id })
+    })
+    const d = await r.json()
+    if (d.success && d.data) {
+      const ok = d.data.success
+      showResult(tr, ok, ok ? '' : (d.data.message || ('HTTP ' + (d.data.statusCode || '?'))))
     } else {
       showResult(tr, false, d.message || '测试失败')
     }
