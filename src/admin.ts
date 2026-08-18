@@ -176,7 +176,7 @@ if (body.apiKeys !== undefined) {
   if (body.tier !== undefined) updates.tier = body.tier
 
   // 梯队迁移：旧 group 移除引用 + 新 group 加入引用
-  const tierChanged = body.groupId !== undefined || body.tier !== undefined
+  const tierChanged = body.groupId !== undefined
   if (tierChanged) {
     const provider = await getProvider(c.env, id)
     if (!provider) {
