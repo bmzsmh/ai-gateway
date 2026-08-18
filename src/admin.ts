@@ -106,6 +106,8 @@ apiKeys: normalizeArray(body.apiKeys, (k) => ({ key: k, enabled: true })),
       : [],
     enabled: body.enabled !== undefined ? body.enabled : true,
     status: body.status || 'pending',
+    groupId: body.groupId,       // 梯队 group（写回持久化）
+    tier: body.tier,             // 梯队级别（写回持久化）
     createdAt: now,
     updatedAt: now,
   }
@@ -169,6 +171,70 @@ if (body.apiKeys !== undefined) {
   if (body.statusReason !== undefined) updates.statusReason = body.statusReason
   if (body.models !== undefined) {
     updates.models = normalizeArray(body.models, (m) => ({ id: m, enabled: true }))
+  }
+  if (body.groupId !== undefined) updates.groupId = body.groupId
+  if (body.tier !== undefined) updates.tier = body.tier
+
+  // 梯队迁移：旧 group 移除引用 + 新 group 加入引用
+  const tierChanged = body.groupId !== undefined || body.tier !== undefined
+  if (tierChanged) {
+    const provider = await getProvider(c.env, id)
+    if (!provider) {
+      return c.json<ApiResponse>({ success: false, message: '提供商不存在' }, 404)
+    }
+
+    // 计算该 provider 的所有 member 引用（providerId/modelId，models 可能多个）
+    const effectiveModels = updates.models || provider.models
+    const memberIds = effectiveModels
+      .map((m) => `${id}/${m.id}`)
+    const groups = await getModelGroups(c.env)
+
+    // 目标 groupId：显式传入优先，否则沿用现有（tier 变更时目标 group 不变）
+    const targetGroupId = body.groupId !== undefined ? body.groupId : provider.groupId
+    // 目标 tier：显式传入优先，否则沿用现有
+    const targetTier = body.tier !== undefined ? body.tier : provider.tier
+
+    // 边界防护：老 provider 无 groupId 时，禁止只传 tier 不传 groupId
+    if (!targetGroupId) {
+      return c.json<ApiResponse>({ success: false, message: `目标 groupId 不能为空：请先选择要加入的梯队组（当前 provider 没有已关联的梯队，无法仅通过 tier 变更迁移）` }, 400)
+    }
+
+    // 校验合法性
+    if (targetTier === 'backup') {
+      const backupGroupId = targetGroupId === 'auto-task' ? 'auto-task-backup' : targetGroupId
+      if (backupGroupId !== 'auto-task' && backupGroupId !== 'auto-task-backup') {
+        return c.json<ApiResponse>({ success: false, message: `不支持的 groupId "${targetGroupId}" 与 tier=backup 组合` }, 400)
+      }
+    }
+
+    // 1. 从所有 group 移除该 provider 的所有引用
+    for (const group of groups) {
+      if (!group.members.some((m) => memberIds.includes(m))) continue
+      group.members = group.members.filter((m) => !memberIds.includes(m))
+      await saveModelGroup(c.env, group)
+    }
+
+    // 2. 加入目标 group（tier=primary → 目标 group；tier=backup → auto-task-backup 映射）
+    if (targetGroupId) {
+      let destGroupId = targetGroupId
+      if (targetTier === 'backup') {
+        destGroupId = targetGroupId === 'auto-task' ? 'auto-task-backup' : targetGroupId
+      }
+      const destGroup = await getModelGroup(c.env, destGroupId)
+      if (destGroup) {
+        for (const memberId of memberIds) {
+          if (!destGroup.members.includes(memberId)) {
+            destGroup.members.push(memberId)
+          }
+        }
+        await saveModelGroup(c.env, destGroup)
+      }
+    }
+
+    // 写回 provider 的 groupId/tier（含从 backup 映射回原始 groupId）
+    if (targetTier === 'backup' && targetGroupId) {
+      updates.groupId = targetGroupId
+    }
   }
 
   const updated = await updateProvider(c.env, id, updates)

@@ -26,6 +26,8 @@ export interface Provider {
     reason: string
     timestamp: string
   }[]
+  groupId?: string          // 所属梯队 group（持久化，供管理查看/迁移）
+  tier?: 'primary' | 'backup'  // 梯队级别（持久化）
   createdAt: string
   updatedAt: string
 }
@@ -84,6 +86,8 @@ export interface UpdateProviderRequest {
   enabled?: boolean
   status?: ProviderStatus
   statusReason?: string
+  groupId?: string  // 梯队 group 变更（迁移 members 并写回）
+  tier?: 'primary' | 'backup'  // 梯队级别变更
 }
 
 export interface CreateProxyKeyRequest {
