@@ -1,5 +1,7 @@
 # AI Gateway
 
+> 💾 **稳定版本备份**：本仓库为持续开发主战场。一份 2026-08-19 封箱的稳定基线（tag `v1.0-multimodal-baseline`，commit `dc1402a`）备份于私有仓库 [bmzsmh/ai-gateway-private](https://github.com/bmzsmh/ai-gateway-private)（已封箱，不再修改）。如果开发中出现问题，可对照或恢复该干净基线。
+
 基于 Cloudflare Workers + Hono 的 AI 提供商 API 代理网关，统一 `/v1` 接口转发，支持多 Key 轮询、健康检查与自动故障转移。
 
 ## 功能与特性
